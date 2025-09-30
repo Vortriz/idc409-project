@@ -5,3 +5,6 @@ result*
 # Python
 .venv
 **/__marimo__
+
+# Dataset
+src/dataset
