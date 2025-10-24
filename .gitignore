@@ -4,7 +4,11 @@ result*
 
 # Python
 .venv
-**/__marimo__
+**/__marimo__/session
+**/__pycache__
+.ruff_cache
 
 # Dataset
 src/dataset
+src/dataset_classic
+src/dataset_cnn

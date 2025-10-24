@@ -6,6 +6,8 @@ dependencies = [
     "imutils>=0.5.4",
     "marimo>=0.17.0",
     "matplotlib>=3.10.7",
+    "nbformat>=5.10.4",
     "opencv-python>=4.12.0.88",
     "pandas>=2.3.3",
+    "scikit-learn>=1.7.2",
 ]

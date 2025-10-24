@@ -1,81 +1,46 @@
 import marimo
 
 __generated_with = "0.17.2"
-app = marimo.App(width="medium")
+app = marimo.App(width="medium", auto_download=["html", "ipynb"])
 
 with app.setup:
     # Initialization code that runs before all other cells
     import os
-    import math
+    import joblib
+    from collections import Counter
 
     import cv2
     import numpy as np
+    import pandas as pd
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.svm import SVC
+    from sklearn.metrics import accuracy_score, classification_report
+
     import matplotlib.pyplot as plt
 
     import marimo as mo
 
 
 @app.cell(hide_code=True)
-def _(cv, img_blurred):
-    def old():
-        corners = cv.cornerHarris(src=img_blurred, blockSize=3, ksize=5, k=1e-4)
-        threshold = (np.min(corners) + np.max(corners)) / 2
-        plt.imshow(corners > threshold, cmap="gray")
-
-        groups = []
-
-        for x, y in zip(*np.where(corners > threshold)):
-            if len(groups) == 0:
-                groups.append([(x, y)])
-
-            distance_threshold = 10
-            for group in groups:
-                xt, yt = group[0]
-                if (
-                    np.linalg.norm(np.array((x, y)) - np.array((xt, yt)))
-                    < distance_threshold
-                ):
-                    group.append((x, y))
-                    break
-            else:
-                groups.append([(x, y)])
-
-        num_corners = len(groups)
-        num_corners
-
-        # for group in groups :
-        #     xs = []
-        #     ys = []
-        #     for x, y in group :
-        #         xs.append(x)
-        #         ys.append(y)
-        #     print(np.mean(np.array(xs)), np.mean(np.array(ys)))
-
-        # Apply thresholding in the gray image to create a binary image
-        ret, thresh = cv.threshold(img_blurred, 150, 255, 0)
-
-        # Find the contours using binary image
-        contours, hierarchy = cv.findContours(
-            thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE
-        )
-        print("Number of contours in image:", len(contours))
-        cnt = contours[0]
-
-        # compute the area and perimeter
-        area = cv.contourArea(cnt)
-        perimeter = cv.arcLength(cnt, True)
-
+def _():
+    mo.md(r"""# Model""")
     return
 
 
 @app.function
-def preprocessing(image_path):
+def preprocessing(image_path, threshold_value=None):
     image = cv2.imread(image_path)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 0)  # to reduce noise
 
     # threshold the image to convert to binary
-    _, thresholded_image = cv2.threshold(blur, 127, 255, cv2.THRESH_BINARY_INV)
+    if threshold_value is None:
+        threshold_value = np.max(blur) / 2 + np.min(blur) / 2
+    _, thresholded_image = cv2.threshold(
+        blur, threshold_value, 255, cv2.THRESH_BINARY_INV
+    )
 
     return thresholded_image
 
@@ -109,12 +74,9 @@ def extract_features_from_contour(contour):
 
     hu_moments = cv2.HuMoments(M).flatten()
     # to make them more stable and comparable
-    for i in range(7):
-        hu_moments[i] = (
-            -1
-            * math.copysign(1.0, hu_moments[i])
-            * math.log10(abs(hu_moments[i]) + 1e-7)
-        )
+    hu_moments = (
+        -1 * np.copysign(1.0, hu_moments) * np.log10(abs(hu_moments) + 1e-7)
+    )
 
     # corners
     perimeter = cv2.arcLength(contour, True)
@@ -125,7 +87,7 @@ def extract_features_from_contour(contour):
     num_corners = len(approx)
 
     # solidity
-    area = cv2.contourArea(contour)
+    area = M["m00"]  # cv2.contourArea(contour)
     hull = cv2.convexHull(contour)
     hull_area = cv2.contourArea(hull)
     solidity = float(area) / hull_area if hull_area > 0 else 0
@@ -138,7 +100,9 @@ def extract_features_from_contour(contour):
     circularity = (4 * np.pi * area) / (perimeter**2) if perimeter > 0 else 0
 
     # final feature vector
-    features = np.append([num_corners, solidity, aspect_ratio, circularity], hu_moments)
+    features = np.append(
+        [num_corners, solidity, aspect_ratio, circularity], hu_moments
+    )
 
     return features
 
@@ -154,22 +118,193 @@ def extract_features(image_path):
     return features
 
 
-@app.cell
+@app.function
+@mo.cache
+def load_data(dataset_path, labels):
+    all_features = []
+    all_labels = []
+
+    feature_names = [
+        "num_corners",
+        "solidity",
+        "aspect_ratio",
+        "circularity",
+        "hu1",
+        "hu2",
+        "hu3",
+        "hu4",
+        "hu5",
+        "hu6",
+        "hu7",
+    ]
+
+    for label in mo.status.progress_bar(
+        labels, title=f"Loading dataset of {len(labels)} labels"
+    ):
+        label_path = os.path.join(dataset_path, label)
+        if not os.path.isdir(label_path):
+            print(f"Warning: Label directory not found: {label_path}")
+            continue
+
+        for filename in mo.status.progress_bar(
+            os.listdir(label_path),
+            title=f"Extracting features for label '{label}'",
+            remove_on_exit=True,
+        ):
+            if filename.endswith(".png"):
+                image_path = os.path.join(label_path, filename)
+                features = extract_features(image_path)
+
+                if features is not None and len(features) == len(
+                    feature_names
+                ):
+                    all_features.append(features)
+                    all_labels.append(label)
+
+    df = pd.DataFrame(all_features, columns=feature_names)
+    df["label"] = all_labels
+
+    return df
+
+
+@app.cell(hide_code=True)
 def _():
-    shapes = os.listdir("src/dataset/train/")
-    print(shapes)
+    mo.md(r"""# Evaluation""")
     return
 
 
 @app.cell
 def _():
-    chosen_shape = "rectangle"
-    print(extract_features(f"src/dataset/train/{chosen_shape}/{chosen_shape}_22.png"))
+    DATASET_DIR = mo.notebook_dir() / "dataset_classic"
+    LABELS = [
+        "parallelogram",
+        "triangle",
+        "pentagon",
+        "rectangle",
+        "square",
+        "circle",
+        "trapezoid",
+        "oval",
+        "semicircle",
+        "rhombus",
+    ]
+
+    data = load_data(DATASET_DIR, LABELS)
+
+    mo.stop(data.empty, mo.md("**Error**: No data was loaded. Exiting!"))
+    mo.output.append(
+        mo.md(f"Successfully loaded and processed **{len(data)}** samples.")
+    )
+    return LABELS, data
+
+
+@app.cell
+def _(data):
+    X = data.drop("label", axis=1)
+    y = data["label"]
+
+    # scale features
+    # this is important for SVM, but also good practice for most models
+    # scaler = StandardScaler()
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y,  # to ensure all classes are represented in train/test splits
+    )
+
+    # X_train = scaler.fit_transform(X_train)
+    # X_test = scaler.transform(X_test)
+    return X, X_test, X_train, y_test, y_train
+
+
+@app.cell
+def _(X):
+    X
     return
 
 
 @app.cell
-def _():
+def _(X_train, y_train):
+    mo.output.append("Training Random Forest classifier...")
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    # print("Training SVM classifier...")
+    # model = SVC(kernel='rbf', probability=True, random_state=42)
+    model.fit(X_train, y_train)
+    mo.output.append("Training complete.")
+    return (model,)
+
+
+@app.cell
+def _(X_test, model, y_test):
+    y_pred = model.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
+    mo.output.append(mo.md(f"Model Accuracy: **{acc * 100:.2f}%**"))
+    return (y_pred,)
+
+
+@app.cell
+def _(LABELS, y_pred, y_test):
+    mo.output.append(mo.md("**Classification Report:**"))
+    print(classification_report(y_test, y_pred, labels=LABELS))
+    return
+
+
+@app.function
+def find_all_contours(thresholded_image):
+    contours, _ = cv2.findContours(
+        thresholded_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    filtered_contours = [
+        contour for contour in contours if cv2.contourArea(contour) >= 100
+    ]
+
+    return filtered_contours
+
+
+@app.function
+def extract_features_from_all_shapes(image_path, threshold_value=None):
+    feature_names = [
+        "num_corners",
+        "solidity",
+        "aspect_ratio",
+        "circularity",
+        "hu1",
+        "hu2",
+        "hu3",
+        "hu4",
+        "hu5",
+        "hu6",
+        "hu7",
+    ]
+    
+    thresholded_image = preprocessing(image_path, threshold_value)
+    contours = find_all_contours(thresholded_image)
+    mo.output.append(f"Found {len(contours)} contours in the image.")
+    
+    if len(contours) == 0:
+        return None
+
+    all_contours_features = []
+    for contour in contours:
+        all_contours_features.append(extract_features_from_contour(contour))
+
+    df = pd.DataFrame(all_contours_features, columns=feature_names)
+
+    return df
+
+
+@app.cell
+def _(model):
+    multi_shape_image = mo.notebook_dir() / "shapes_used.jpeg"
+    all_shapes_features = extract_features_from_all_shapes(
+        multi_shape_image, threshold_value=250
+    )
+    predicted_shapes = model.predict(all_shapes_features)
+    Counter(predicted_shapes)
     return
 
 
