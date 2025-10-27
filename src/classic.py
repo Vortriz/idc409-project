@@ -6,19 +6,24 @@ app = marimo.App(width="medium", auto_download=["html", "ipynb"])
 with app.setup:
     # Initialization code that runs before all other cells
     import os
-    import joblib
     from collections import Counter
 
     import cv2
     import numpy as np
     import pandas as pd
+    import seaborn as sns
     from sklearn.model_selection import train_test_split
-    from sklearn.preprocessing import StandardScaler
+    from sklearn.preprocessing import StandardScaler, LabelBinarizer
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.svm import SVC
-    from sklearn.metrics import accuracy_score, classification_report
+    from sklearn.metrics import (
+        accuracy_score,
+        classification_report,
+        confusion_matrix,
+        ConfusionMatrixDisplay,
+        RocCurveDisplay,
+    )
 
-    import matplotlib.pyplot as plt
 
     import marimo as mo
 
@@ -203,10 +208,6 @@ def _(data):
     X = data.drop("label", axis=1)
     y = data["label"]
 
-    # scale features
-    # this is important for SVM, but also good practice for most models
-    # scaler = StandardScaler()
-
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
@@ -214,9 +215,6 @@ def _(data):
         random_state=42,
         stratify=y,  # to ensure all classes are represented in train/test splits
     )
-
-    # X_train = scaler.fit_transform(X_train)
-    # X_test = scaler.transform(X_test)
     return X, X_test, X_train, y_test, y_train
 
 
@@ -230,8 +228,6 @@ def _(X):
 def _(X_train, y_train):
     mo.output.append("Training Random Forest classifier...")
     model = RandomForestClassifier(n_estimators=100, random_state=42)
-    # print("Training SVM classifier...")
-    # model = SVC(kernel='rbf', probability=True, random_state=42)
     model.fit(X_train, y_train)
     mo.output.append("Training complete.")
     return (model,)
@@ -249,6 +245,51 @@ def _(X_test, model, y_test):
 def _(LABELS, y_pred, y_test):
     mo.output.append(mo.md("**Classification Report:**"))
     print(classification_report(y_test, y_pred, labels=LABELS))
+    return
+
+
+@app.cell
+def _(model, y_pred, y_test):
+    C = confusion_matrix(y_test, y_pred, labels=model.classes_)
+
+    ax = sns.heatmap(
+        C, annot=True, fmt=".0f", cmap=sns.color_palette("Blues", as_cmap=True)
+    )
+    ax.set_xticklabels(
+        model.classes_, rotation=45, rotation_mode="anchor", ha="right"
+    )
+    ax.set_yticklabels(model.classes_, rotation=0)
+    ax.set_xlabel("Predicted label")
+    ax.set_ylabel("True label")
+    ax.set_title("Confusion Matrix")
+    return
+
+
+@app.cell
+def _(X_test, model, y_test, y_train):
+    label_binarizer = LabelBinarizer().fit(y_train)
+    y_onehot_test = label_binarizer.transform(y_test)
+    y_score = model.predict_proba(X_test)
+
+    display = RocCurveDisplay.from_predictions(
+        y_onehot_test.ravel(),
+        y_score.ravel(),
+        name="micro-average OvR",
+        curve_kwargs=dict(color="darkorange"),
+        plot_chance_level=True,
+        despine=True,
+    )
+    display.ax_.set(
+        xlabel="False Positive Rate",
+        ylabel="True Positive Rate",
+        title="Micro-averaged One-vs-Rest\nReceiver Operating Characteristic",
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""# Multi object image""")
     return
 
 
@@ -280,11 +321,11 @@ def extract_features_from_all_shapes(image_path, threshold_value=None):
         "hu6",
         "hu7",
     ]
-    
+
     thresholded_image = preprocessing(image_path, threshold_value)
     contours = find_all_contours(thresholded_image)
     mo.output.append(f"Found {len(contours)} contours in the image.")
-    
+
     if len(contours) == 0:
         return None
 
@@ -298,8 +339,14 @@ def extract_features_from_all_shapes(image_path, threshold_value=None):
 
 
 @app.cell
-def _(model):
-    multi_shape_image = mo.notebook_dir() / "shapes_used.jpeg"
+def _():
+    multi_shape_image = mo.notebook_dir() / "shapes_used.png"
+    mo.image(multi_shape_image)
+    return (multi_shape_image,)
+
+
+@app.cell
+def _(model, multi_shape_image):
     all_shapes_features = extract_features_from_all_shapes(
         multi_shape_image, threshold_value=250
     )
