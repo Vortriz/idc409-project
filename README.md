@@ -13,7 +13,7 @@ Both datasets are same, just structured differently for the two approaches.
 
 ## Viewing the Notebooks
 
-You can view the pre-run notebooks by simply opening [classic.html](src/__marimo__/classic.html) and [cnn.html](src/__marimo__/cnn.html) in your browser.
+You can view the pre-run notebooks by simply opening [classic.html](https://vortriz.github.io/idc409-project/src/__marimo__/classic.html) and [cnn.html](https://vortriz.github.io/idc409-project/src/__marimo__/cnn.html) in your browser.
 
 ## Instructions
 
