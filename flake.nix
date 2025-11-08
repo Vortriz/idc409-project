@@ -36,7 +36,7 @@
       in
         pkgs.devshell.mkShell
         {
-          name = "python";
+          name = "idc409-project";
           devshell.motd = "";
 
           packages =
