@@ -180,7 +180,7 @@ def _():
 
 @app.cell
 def _():
-    DATASET_DIR = mo.notebook_dir() / "dataset_classic"
+    DATASET_DIR = mo.notebook_location() / "dataset_classic"
     LABELS = [
         "parallelogram",
         "triangle",
@@ -340,7 +340,7 @@ def extract_features_from_all_shapes(image_path, threshold_value=None):
 
 @app.cell
 def _():
-    multi_shape_image = mo.notebook_dir() / "shapes_used.png"
+    multi_shape_image = mo.notebook_location() / "public" / "shapes_used.png"
     mo.image(multi_shape_image)
     return (multi_shape_image,)
 

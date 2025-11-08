@@ -300,7 +300,7 @@ def _():
 
 @app.cell
 def _(model, shape_of_image, shapes):
-    _image = cv2.imread(mo.notebook_dir() / 'shapes_used.jpeg')
+    _image = cv2.imread(mo.notebook_location() / 'public' / 'shapes_used.jpeg')
     gray = cv2.cvtColor(_image, cv2.COLOR_BGR2GRAY)
     plt.imshow(gray, cmap='gray')
     plt.title('Image containing multiple shapes')
