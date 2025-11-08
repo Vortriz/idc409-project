@@ -1,5 +1,9 @@
 # IDC409 Project - Shape Identification
 
+By [Rishi Vora](https://github.com/Vortriz) and [Sparsha Ray](https://github.com/SparshaRay).
+
+---
+
 There are four main files.
 
  - `src/classic.py` contains the Feature Extraction + Random Forests implementation. The dataset is located at `src/dataset_classic.tar.gz`.
